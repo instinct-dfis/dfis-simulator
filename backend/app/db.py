@@ -8,7 +8,19 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+_connect_args = {"timeout": 30} if settings.database_url.startswith("sqlite") else {}
+engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True,
+                             connect_args=_connect_args)
+
+if settings.database_url.startswith("sqlite"):
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
